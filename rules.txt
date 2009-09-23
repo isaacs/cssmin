@@ -1,0 +1,110 @@
+# This is a cross-platform list of regular expression rules to power the various
+# cssmin implementations.  It is a very little language, with very little power.
+
+# Syntax of this file:
+# 
+# lines starting with # are comments. // and /* are not supported.
+# Strings are quoted using double-quotes.  Regular expressions are quoted using
+# forward-slashes.  The backslash is the escape character.  There are no exceptions.
+#
+# *** Directives ***
+# 
+# replace - globally replace the regular expression with the string.
+# regular expressions must global, case-sensitive, support backrefs like \1,
+# and support references in the replace string like $1 (and $0 for the whole
+# matched string.)
+# 
+# each - Find each occurrence of the regular expression in the input.  For each,
+# apply the contents of the block to the $0 found by the regular expression.
+# 
+# end - end an "each" block.
+# 
+# *** Functions ***
+# 
+# Replacement strings can have a function applied.
+# 
+# hex - Replace a string of decimal digits to hexadecimal.
+# uppercase - Replace a string of characters with their uppercase equivalents.
+# 
+
+# remove comment blocks, everything between /* and */
+replace /\/\*(.*?)\*\// ""
+
+# normalize whitespace
+replace /\s+/ " "
+
+# support the box model hack (although it's a bit dated now)
+replace /"\\"}\\""/ "___BMHCRAZINESS___"
+
+# Remove the spaces before the things that should not have spaces before them.
+# But, be careful not to turn "p :link {...}" into "p:link{...}"
+# Swap out any selector colons with a token, and then swap back.
+each /(^|\})([^{]+)\{/
+	replace /:/ "___SELECTORCOLON___"
+end
+replace /\s+([!{};:>+\(\)\],])/ "$1"
+replace /___SELECTORCOLON___/ ":"
+
+# If there is a @charset, then only allow one, and push to the top of the file.
+replace /^(.*)(@charset "[^"]*";)/ "$2$1"
+replace /^(\s*@charset [^;]+;\s*)+/ "$1"
+
+# Put the space back in some cases, to support stuff like
+# @media screen and (-webkit-min-device-pixel-ratio:0){
+# where @media screen and(-webkit-...){ would fail.
+replace /(@media[^{]*[^\s])\(/ "$1 ("
+
+# Remove the spaces after the things that should not have spaces after them.
+replace /([!{}:;>+\(\[,])\s+/ "$1"
+
+# Add the semicolon where it's missing. This is no longer necessary,
+# and will be removed later, but it makes a few of the next rules simpler.
+replace /([^;\}])}/ "$1;}"
+
+# Replace 0(px,em,%) with 0.
+replace /([\s:])(0)(px|em|%|in|cm|mm|pc|pt|ex)/ "$1$2"
+
+# Replace 0 0 0 0; with 0.
+replace /:0 0 0 0;/ ":0;"
+replace /:0 0 0;/ ":0;"
+replace /:0 0;/ ":0;"
+# Replace background-position:0; with background-position:0 0;
+# since we just broke that with the last bit.
+replace /background-position:0;/ "background-position:0 0;"
+
+# Replace 0.6 to .6, but only when preceded by : or a white-space
+replace /(:|\s)0+\.(\d+)/ "$1.$2"
+
+# Shorten colors from rgb(51,102,153) to #336699
+# This makes it more likely that it'll get further compressed in the next step.
+each /rgb\(([0-9]{1,3})(,[0-9]{1,3}){2}\)/
+	replace /([0-9]{1,3})/ hex("$1")
+	replace /rgb\(([A-F0-9]{6})\)/ "#$1"
+end
+
+# normalize #aBc to #ABC.  These will be in groups of either 3 or 6
+replace /#([a-fA-F0-9]{3}){1,2}/ uppercase("$0")
+
+# Shorten colors from #AABBCC to #ABC. Note that we want to make sure
+# the color is not preceded by either ", " or =. Indeed, the property
+#     filter: chroma(color="#FFFFFF");
+# would become
+#     filter: chroma(color="#FFF");
+# which makes the filter break in IE.
+replace /([^"'=\s])(\s*)#([0-9A-F])\3([0-9A-F])\4([0-9A-F])\5/ "$1$2$3$4$5"
+
+# Replace multiple semi-colons in a row by a single one
+# See SF bug #1980989
+replace /;;+/ ";"
+
+# Remove the final semicolons
+replace /;}/ "}"
+
+# Remove empty rules.
+replace /[^}]+{}/ ""
+
+# Replace the pseudo class for the Box Model Hack
+replace /___BMHCRAZINESS___/ "\"\\\"}\\\"\""
+
+# Trim the final string (for any leading or trailing white spaces)
+replace /^\s+|\s+$/ ""
